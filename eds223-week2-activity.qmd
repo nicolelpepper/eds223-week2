@@ -1,0 +1,195 @@
+---
+title: "EDS 223 - Week 2"
+format: html
+editor: visual
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r}
+# Load libraries
+rm(list = ls()) # best practices, clear all the variables in your environment before running your code
+library(sf) # for handling vector data
+library(tmap) # for making maps
+library(tidyverse) # because we love the tidyverse
+library(spData) # preloaded spatial data
+library(tmap)
+
+```
+
+```{r}
+# create st_point with longitude and latitude for London
+# simple feature geometry
+london_point <- st_point(c(0.1, 51.5))
+
+# add coordinate reference system
+# simple feature collection
+london_geom <- st_sfc(london_point, crs = 4326)
+
+# create data frame of attributes about London
+london_attrib <- data.frame(
+  name = "London",
+  temperature = 25,
+  date = as.Date("2017-06-21")
+  )
+
+# combine geometry and data frame
+# simple feature object
+london_sf <- st_sf(london_attrib, geometry = london_geom)
+
+# check class
+class(london_sf)
+
+# check coordinate reference system
+st_crs(london_sf)$IsGeographic
+
+
+```
+
+
+```{r}
+world <- spData::world
+print(world)
+
+# see column names
+names(world)
+
+# see summary of data
+summary(world$lifeExp)
+
+```
+
+
+```{r}
+world_df <- world %>%
+  select(-geom)
+
+colnames(world_df)
+```
+
+```{r}
+world_Df <- st_drop_geometry(world)
+class(world_df)
+```
+
+```{r}
+london_proj <- data.frame(x = 53000, y = 180000) %>% # Creating a dataframe of the location of London pipe into st_as_sf
+  st_as_sf(coords = c("x","y"), crs = "EPSG:27700") # tell what columns are storing the geometry coordinates
+```
+
+```{r}
+# test if crs are the same for diff files
+st_crs(london_proj) == st_crs(london_sf)
+
+```
+
+```{r}
+# transform projections to another
+london_sf_transform <- st_transform(london_sf, crs = st_crs(london_proj)) # you can grab crs from another layer
+```
+
+```{r}
+# Create a conditional to diagnose if coordinate reference systems match
+if(st_crs(london_sf_transform)== st_crs(london_proj)){
+  print("coordinate reference systems of dataset match")
+} else {
+  warning("coordinate reference systems do not match") # could make this an error
+}
+```
+
+
+```{r}
+tm_shape(world, projection = 8857) + 
+  tm_fill(col="area_km2")
+  
+```
+
+## Vector attribute subsetting
+```{r}
+world %>%
+  select(name_long, pop)
+
+world %>%
+  select(-subregion)
+
+newnames <- world %>%
+  select(name = name_long, population = pop) # (new name = old name)
+
+newnames
+
+
+world1 <- world %>%
+  filter(area_km2 < 10000)
+```
+
+```{r}
+world %>% 
+  filter(continent == "Asia") %>%
+  select(name_long, continent, lifeExp) %>%
+  slice_max(lifeExp) %>% # picks row with max value
+  st_drop_geometry()
+```
+
+```{r}
+world %>%
+  group_by(continent) %>%
+  summarise(population = sum(pop, na.rm = TRUE)) %>%
+  st_drop_geometry()
+```
+
+
+# Joins with vector attributes
+```{r}
+coffee_data <- spData::coffee_data
+head(coffee_data)
+
+nrow(coffee_data)
+
+```
+
+```{r}
+# Left join by common field
+world_coffee <- left_join(world, coffee_data, by = "name_long")
+
+names(world_coffee)
+```
+
+```{r}
+# Make a map of
+tm_shape(world_coffee) +
+  tm_fill(col = "coffee_production_2017")
+
+```
+
+```{r}
+# Left join by common field
+world_coffee_inner <- inner_join(world, coffee_data, by = "name_long")
+
+# 
+if(nrow(world_coffee_inner) < nrow(coffee_data)) {
+  warning("inner join does not match original data. Potential data loss during join")
+}
+
+```
+
+```{r}
+setdiff(coffee_data$name_long, world$name_long)
+```
+
+
+```{r}
+# * is wildcard
+drc <- stringr::str_subset(world$name_long,"Dem*.+Congo")
+
+# update coffee data with matching name, subset to row # I WAS CONFUSED HERE
+coffee_data$name_long[stringr::str_detect(coffee_data$name_long, "Congo")] <- drc
+```
+
+```{r}
+# Make intermediate maps to test and make sure things are working as expected
+tm_shape(world_coffee_inner) + 
+  tm_polygons(fill = "coffee_production_2017",
+              title = "Coffee production(2017)") +
+  tm_layout(legend.outside = TRUE)
+```
+
